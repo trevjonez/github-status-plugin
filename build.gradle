@@ -1,0 +1,111 @@
+/*
+ *    Copyright 2019 Trevor Jones
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
+
+apply plugin: "java-gradle-plugin"
+apply plugin: "org.jetbrains.kotlin.jvm"
+apply plugin: "maven-publish"
+apply plugin: "com.gradle.plugin-publish"
+apply plugin: "com.gradle.build-scan"
+
+buildScan {
+  setTermsOfServiceUrl("https://gradle.com/terms-of-service")
+  setTermsOfServiceAgree("yes")
+  publishAlways()
+}
+
+gradlePlugin {
+  plugins {
+    create("status") {
+      displayName = "com.trevjonez.github-status"
+      description = "Gradle tasks plugin for updating github commit statuses"
+      id = "com.trevjonez.github-status"
+      implementationClass = "com.trevjonez.github.DelegatingStatusPlugin"
+    }
+  }
+}
+
+pluginBundle {
+  website = "https://github.com/trevjonez/github-status-plugin"
+  vcsUrl = "https://github.com/trevjonez/github-status-plugin.git"
+  tags = ["github", "ci", "status", "statuses"]
+}
+
+dependencies {
+  implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+  implementation "com.trevjonez.github:statuses:0.1.7"
+  implementation "com.trevjonez.github:gradle-helpers:0.1.7"
+  
+  compileOnly "com.android.tools.build:gradle:$agpVersion"
+
+  testCompile "junit:junit:4.12"
+  testCompile "org.assertj:assertj-core:3.5.2"
+}
+
+tasks.named("test").configure {
+  systemProperty("org.gradle.testkit.debug", true)
+  
+  systemProperty("buildDir", buildDir.absolutePath)
+  inputs.files("gradle.properties")
+  
+//  systemProperty("andApp", file("and-app").absolutePath)
+//  outputs.dir("and-app/build")
+//  inputs.dir("and-app/src")
+//  inputs.files("and-app/build.gradle", "and-app/settings.gradle")
+//
+//  systemProperty("andLib", file("and-lib").absolutePath)
+//  outputs.dir("and-lib/build")
+//  inputs.dir("and-lib/src")
+//  inputs.files("and-lib/build.gradle", "and-lib/settings.gradle")
+  
+  systemProperty("javaLib", file("java-lib").absolutePath)
+  outputs.dir("java-lib/build")
+  inputs.dir("java-lib/src")
+  inputs.files("java-lib/build.gradle")
+}
+
+def sourcesJar = tasks.register("sourcesJar", Jar) {
+  classifier = "sources"
+  from(sourceSets["main"].allSource)
+}
+
+publishing {
+  publications {
+    register("plugin", MavenPublication) {
+      from(components["java"])
+      artifact(sourcesJar.get())
+
+      pom {
+        inceptionYear.set("2019")
+        licenses {
+          license {
+            name.set("The Apache Software License, Version 2.0")
+            url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+            distribution.set("repo")
+          }
+        }
+      }
+    }
+  }
+}
+
+afterEvaluate {
+  configurations.asList().forEach {
+    println it
+  }
+  plugins.asList().forEach {
+//    println it.getClass()
+  }
+}
