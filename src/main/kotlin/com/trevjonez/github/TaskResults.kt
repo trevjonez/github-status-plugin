@@ -23,7 +23,7 @@ import org.gradle.api.Task
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
-import org.gradle.api.tasks.testing.AbstractTestTask
+import java.io.File
 
 
 abstract class GithubStatusTaskResults(
@@ -41,19 +41,24 @@ abstract class GithubStatusTaskResults(
   }
 }
 
-fun configureResultsExt(testTask: AbstractTestTask) {
-  testTask.configureResultsExt {
-    val testListener = CountingTestListener(testTask)
+fun configureResultsExt(
+  testTaskProvider: TaskProvider<*>,
+  reportDir: Provider<File>,
+  doneProvider: TaskProvider<StatusApiTask>
+) {
 
-    state.set(testTask.project.provider { testListener.toState() })
-    description.set(testTask.project.provider { testListener.toDescription() })
+  testTaskProvider.configure {
+    it.configureResultsExt {
+      val resultParser = TestResultParser(reportDir)
+      state.set(resultParser.stateProvider())
+      description.set(resultParser.descriptionProvider())
+    }
   }
 }
 
 inline fun <T : Task> T.configureResultsExt(
   crossinline action: GithubStatusTaskResults.() -> Unit
 ) {
-
   val value = extensions.create(TASK_RESULTS, GithubStatusTaskResults::class.java, this)
   val property = project.objects.property(GithubStatusTaskResults::class.java)
   extensions.add(TASK_RESULTS_PROPERTY, property)
@@ -63,10 +68,4 @@ inline fun <T : Task> T.configureResultsExt(
 }
 
 val TaskProvider<out Task>.results: Provider<GithubStatusTaskResults>
-  get() = flatMap { it.extensions.getByName(TASK_RESULTS) as Property<GithubStatusTaskResults> }
-
-val Provider<GithubStatusTaskResults>.state: Provider<Status.State>
-  get() = flatMap { it.state }
-
-val Provider<GithubStatusTaskResults>.description: Provider<String>
-  get() = flatMap { it.description }
+  get() = map { it.extensions.getByName(TASK_RESULTS) as GithubStatusTaskResults }

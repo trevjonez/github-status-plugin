@@ -19,7 +19,6 @@ package com.trevjonez.github
 import org.assertj.core.api.Assertions.assertThat
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
-import org.junit.Assume
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -32,16 +31,19 @@ import kotlin.reflect.KProperty
 @RunWith(JUnit4::class)
 class DelegatingStatusPluginJavaLibTest {
 
-  private val buildDir by systemProperty()
-
   private val javaLib by systemProperty()
 
   @get:Rule
   val testProjectDir = TemporaryFolder()
 
-  fun gradleRunner(projectDir: File, vararg args: String): GradleRunner {
+  private fun prepProjectDir() = testProjectDir.newFolder().apply {
+    javaLib.copyRecursively(this, true)
+  }
+
+  private fun gradleRunner(projectDir: File, vararg args: String): GradleRunner {
     val argList = args.toMutableList().apply {
       add("--stacktrace")
+      add("--scan")
     }
 
     return GradleRunner.create()
@@ -53,10 +55,7 @@ class DelegatingStatusPluginJavaLibTest {
 
   @Test
   fun `pending and done task automatically added to java project`() {
-    val projectDir = testProjectDir.newFolder().apply {
-      javaLib.copyRecursively(this, true)
-    }
-
+    val projectDir = prepProjectDir()
     val result = gradleRunner(projectDir, "tasks").build()
 
     assertThat(result.output).contains(
@@ -70,12 +69,9 @@ class DelegatingStatusPluginJavaLibTest {
   }
 
   @Test
-  fun `pending task is not configured by invoking test task alone`() {
-    val projectDir = testProjectDir.newFolder().apply {
-      javaLib.copyRecursively(this, true)
-    }
-
-    val result = gradleRunner(projectDir, "test", "--info").buildAndFail()
+  fun `test task does not require pending task be run in the same invocation`() {
+    val projectDir = prepProjectDir()
+    val result = gradleRunner(projectDir, "test").buildAndFail()
 
     assertThat(result.tasks)
       .extracting { it.path }
@@ -83,12 +79,10 @@ class DelegatingStatusPluginJavaLibTest {
   }
 
   @Test
-  fun `done task is not configured by invoking test task alone`() {
-    val projectDir = testProjectDir.newFolder().apply {
-      javaLib.copyRecursively(this, true)
-    }
-
-    val result = gradleRunner(projectDir, "test", "--info").buildAndFail()
+  fun `pending task does not require done tas be run in the same invocation`() {
+    val projectDir = prepProjectDir()
+    val result = gradleRunner(projectDir, "githubStatusPendingTest")
+      .build()
 
     assertThat(result.tasks)
       .extracting { it.path }
@@ -96,100 +90,24 @@ class DelegatingStatusPluginJavaLibTest {
   }
 
   @Test
-  fun `done task is invoked by invoking pending task alone`() {
-    val projectDir = testProjectDir.newFolder().apply {
-      javaLib.copyRecursively(this, true)
-    }
-
-    val result = gradleRunner(projectDir, "githubStatusPendingTest")
-      .buildAndFail()
+  fun `done task does not require pending task be run in the same invocation`() {
+    val projectDir = prepProjectDir()
+    val result = gradleRunner(projectDir, "githubStatusDoneTest")
+      .build()
 
     assertThat(result.tasks)
       .extracting { it.path }
-      .contains(":githubStatusDoneTest")
+      .doesNotContain(":githubStatusPendingTest")
+  }
+
+  @Test
+  fun `done task skipped if not explicitly invoked`() {
+    val projectDir = prepProjectDir()
+    val result = gradleRunner(projectDir, "test")
+      .buildAndFail()
 
     assertThat(result.task(":githubStatusDoneTest")!!.outcome)
       .isEqualTo(TaskOutcome.SKIPPED)
-  }
-
-  @Test
-  fun `pending task is invoked by invoking done task alone`() {
-    val projectDir = testProjectDir.newFolder().apply {
-      javaLib.copyRecursively(this, true)
-    }
-
-    val result = gradleRunner(projectDir, "githubStatusDoneTest")
-      .buildAndFail()
-
-    assertThat(result.tasks)
-      .extracting { it.path }
-      .contains(":githubStatusPendingTest")
-
-    assertThat(result.task(":githubStatusPendingTest")!!.outcome)
-      .isEqualTo(TaskOutcome.SKIPPED)
-  }
-
-  @Test
-  fun `pending task is skipped if invoked without trigger task`() {
-    val projectDir = testProjectDir.newFolder().apply {
-      javaLib.copyRecursively(this, true)
-    }
-
-    val result = gradleRunner(projectDir, "githubStatusPendingTest", "--info").buildAndFail()
-
-    assertThat(result.tasks)
-      .extracting { it.path }
-      .contains(":githubStatusPendingTest")
-
-    assertThat(result.task(":githubStatusPendingTest")!!.outcome)
-      .isEqualTo(TaskOutcome.SKIPPED)
-  }
-
-  @Test
-  fun `done task receives correct input when test task is ran`() {
-    val projectDir = testProjectDir.newFolder().apply {
-      javaLib.copyRecursively(this, true)
-    }
-
-    val result = gradleRunner(projectDir, "githubStatusDoneTest", "--info").buildAndFail()
-
-    assertThat(result.output)
-      .contains("FAILURE: 2/4 Passed. 1 Failed. 1 Skipped.")
-  }
-
-  @Test
-  fun `done task receives correct input when test task is up to date`() {
-    val projectDir = testProjectDir.newFolder().apply {
-      javaLib.copyRecursively(this, true)
-    }
-
-    fun gradleInvocation() =
-      gradleRunner(
-        projectDir,
-        "test", "--tests", "com.trevjonez.Bravo", "--info"
-      ).build()
-
-    val firstBuild = gradleInvocation()
-    assertThat(firstBuild.task(":test")!!.outcome)
-      .isEqualTo(TaskOutcome.SUCCESS)
-
-    assertThat(firstBuild.output)
-      .contains("SUCCESS: 1/1 Passed.")
-
-    val secondBuild = gradleInvocation()
-    assertThat(secondBuild.task(":test")!!.outcome)
-      .isEqualTo(TaskOutcome.UP_TO_DATE)
-
-    assertThat(secondBuild.output)
-      .contains("SUCCESS: 1/1 Passed.")
-  }
-
-  private fun environmentVariable(): ReadOnlyProperty<Any, String> {
-    return object : ReadOnlyProperty<Any, String> {
-      override fun getValue(thisRef: Any, property: KProperty<*>): String {
-        return System.getenv(property.name).also { Assume.assumeNotNull(it) }
-      }
-    }
   }
 
   private fun systemProperty(): ReadOnlyProperty<Any, File> {

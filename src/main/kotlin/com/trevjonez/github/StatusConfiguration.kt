@@ -16,21 +16,13 @@
 
 package com.trevjonez.github
 
-import org.gradle.api.tasks.testing.Test
+import com.trevjonez.github.gradle.dslFun
+import org.gradle.api.provider.Property
 
-abstract class JavaStatusPlugin : AbsStatusPlugin() {
-  override fun registerTasks() {
-    val testProvider = target.tasks.named("test", Test::class.java)
+interface StatusConfiguration {
+  val sha: Property<String>
 
-    val triggerProvider = target.tasks.register("withTestGithubStatuses")
-    topLevelTriggerProvider.configure { it.dependsOn(triggerProvider) }
-
-    registerStatusTasks(triggerProvider, testProvider) { testTask, _, doneProvider ->
-      configureResultsExt(
-        testTask,
-        testTask.map { it.reports.junitXml.destination },
-        doneProvider
-      )
-    }
-  }
+  fun sha(value: Any) = sha.dslFun(value)
 }
+
+abstract class StatusConfigurationExt : StatusConfiguration

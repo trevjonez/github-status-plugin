@@ -17,6 +17,7 @@
 plugins {
   id 'java-library'
   id 'com.trevjonez.github-status'
+  id "com.gradle.build-scan" version "2.3"
 }
 
 repositories {
@@ -25,4 +26,19 @@ repositories {
 
 dependencies {
   testCompile "junit:junit:4.12"
+}
+
+buildScan {
+  setTermsOfServiceUrl("https://gradle.com/terms-of-service")
+  setTermsOfServiceAgree("yes")
+}
+
+GithubApi {
+  owner "trevjonez"
+  repo "PluginTesting"
+  authToken pluginTestingToken
+}
+
+GithubStatus {
+  sha "eb3d3c75923864062a8139bc846e07848f81f2d0"
 }

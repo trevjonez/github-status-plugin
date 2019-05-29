@@ -32,8 +32,12 @@ abstract class AndroidAppStatusPlugin : AbsStatusPlugin() {
         AndroidUnitTest::class.java
       )
 
-      registerStatusTasks(unitTestProvider) { unitTest ->
-        configureResultsExt(unitTest)
+      registerStatusTasks(TODO(), unitTestProvider) { testTask, reportDir, doneProvider ->
+        configureResultsExt(
+          testTask,
+          testTask.map { it.reports.junitXml.destination },
+          doneProvider
+        )
       }
 
       val androidTestProvider = target.tasks.named(
@@ -41,10 +45,10 @@ abstract class AndroidAppStatusPlugin : AbsStatusPlugin() {
         DeviceProviderInstrumentTestTask::class.java
       )
 
-      registerStatusTasks(androidTestProvider) { instrumentationTest ->
-        instrumentationTest.configureResultsExt {
-
-        }
+      registerStatusTasks(
+        TODO(),
+        androidTestProvider
+      ) { instrumentationTest, pendingProvider, doneProvider ->
       }
 
       val lintTaskProvider = target.tasks.named(
@@ -52,20 +56,14 @@ abstract class AndroidAppStatusPlugin : AbsStatusPlugin() {
         LintPerVariantTask::class.java
       )
 
-      registerStatusTasks(lintTaskProvider) { lint ->
-        lint.configureResultsExt {
-
-        }
+      registerStatusTasks(TODO(), lintTaskProvider) { lint, pendingProvider, doneProvider ->
       }
     }
 
     val globalLintTaskProvider =
       target.tasks.named("lint", LintGlobalTask::class.java)
 
-    registerStatusTasks(globalLintTaskProvider) { lint ->
-      lint.configureResultsExt {
-
-      }
+    registerStatusTasks(TODO(), globalLintTaskProvider) { lint, pendingProvider, doneProvider ->
     }
   }
 }

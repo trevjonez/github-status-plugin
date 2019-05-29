@@ -23,54 +23,77 @@ import org.gradle.api.tasks.TaskProvider
 
 abstract class AbsStatusPlugin : GithubApiPlugin() {
 
-  val triggerTaskProvider: TaskProvider<*> by lazy {
-    target.tasks.register("withGithubStatusReporting")
+  lateinit var statusConfigExt: StatusConfigurationExt
+
+  val topLevelTriggerProvider by lazy {
+    target.tasks.register("withGithubStatuses")
+  }
+
+  override fun createConfigExt() {
+    statusConfigExt =
+      target.extensions.create("GithubStatus", StatusConfigurationExt::class.java)
   }
 
   fun <T : Task> registerStatusTasks(
+    triggerProvider: TaskProvider<*>,
     subjectProvider: TaskProvider<T>,
-    configureTaskResultsProperty: (T) -> Unit
+    configureTaskResultsProperty: (TaskProvider<T>, TaskProvider<StatusApiTask>, TaskProvider<StatusApiTask>) -> Unit
   ) {
-    subjectProvider.configure(configureTaskResultsProperty)
-
     val pendingProvider = target.tasks.register(
       "githubStatusPending${subjectProvider.name.capitalize()}",
       StatusApiTask::class.java
     ) {
-      val subjectTask = subjectProvider.get()
-
       it.group = TASK_GROUP
       it.setDescription("Set github status as pending")
-      it.context.set(subjectTask.path)
+      it.context.set(subjectProvider.map { subject -> subject.path })
       it.state.set(Status.State.PENDING)
-      it.description.set("${subjectTask.name} is running")
+      it.description.set(subjectProvider.map { subject -> "${subject.name} is running" })
       //TODO targetUrl
-      it.onlyIf { task -> task.project.gradle.taskGraph.hasTask(triggerTaskProvider.get()) }
-
-      it.finalizedBy(subjectTask)
-      subjectTask.dependsOn(it)
+      it.sha.set(statusConfigExt.sha)
+      it.setApiConfig(configExtension)
+      it.onlyIf {
+        target.gradle.startParameter.taskNames.any { requested ->
+          requested == it.name ||
+              requested == triggerProvider.name ||
+              requested == topLevelTriggerProvider.name
+        }
+      }
     }
 
     val doneProvider = target.tasks.register(
       "githubStatusDone${subjectProvider.name.capitalize()}",
       StatusApiTask::class.java
     ) {
-      val subjectTask = subjectProvider.get()
       it.group = TASK_GROUP
       it.setDescription("Set github status of success or failure")
-      it.context.set(subjectTask.path)
-      it.state.set(subjectProvider.results.state)
-      it.description.set(subjectProvider.results.description)
+      it.context.set(subjectProvider.map { subject -> subject.path })
+      it.state.set(subjectProvider.results.flatMap { results -> results.state })
+      it.description.set(subjectProvider.results.flatMap { results -> results.description })
       //TODO targetUrl
-      it.onlyIf { task -> task.project.gradle.taskGraph.hasTask(triggerTaskProvider.get()) }
-      subjectTask.finalizedBy(it)
+      it.sha.set(statusConfigExt.sha)
+      it.setApiConfig(configExtension)
+
+      it.mustRunAfter(pendingProvider)
+      it.mustRunAfter(subjectProvider)
+      it.onlyIf {
+        target.gradle.startParameter.taskNames.any { requested ->
+          requested == it.name ||
+              requested == triggerProvider.name ||
+              requested == topLevelTriggerProvider.name
+        }
+      }
     }
 
-    pendingProvider.configure {
-      it.finalizedBy(doneProvider)
+    subjectProvider.configure { subject ->
+      subject.mustRunAfter(pendingProvider)
+      subject.finalizedBy(doneProvider)
     }
-    doneProvider.configure {
+
+    triggerProvider.configure {
       it.dependsOn(pendingProvider)
+      it.dependsOn(doneProvider)
     }
+
+    configureTaskResultsProperty(subjectProvider, pendingProvider, doneProvider)
   }
 }
